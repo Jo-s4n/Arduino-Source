@@ -347,14 +347,30 @@ void run_block32_down2_ARM64_NEON(
 
 
 //
-//  Scratch CI probe (do not merge): does Apple Clang's arm_neon.h have
-//  a 128-bit-table TBL intrinsic? vtbl2q_u8 is confirmed absent (first
-//  #1587 Mac run); if this compiles on Mac, vtbl1q_u8 exists and the
-//  Clang path can use a single 128-bit TBL for the up kernel.
+//  Scratch CI probes (do not merge): which TBL intrinsics does Apple
+//  Clang's arm_neon.h actually have? Each function references one
+//  candidate symbol; Mac CI reports every undeclared one:
 //
-float32x4_t pa_neon_tbl1q_probe(uint8x16_t tab, uint8x16_t idx)
+//  - vtbl1q_u8:    Clang's name for the 128-bit single-table TBL.
+//  - vqtbl1q_u8 / vqtbl2q_u8: GCC's names for the 128-bit TBLs
+//    (confirmed present in Linux GCC's header, where the GCC branch
+//    of this kernel compiles).
+//  - vtbl2q_u8:    already confirmed absent (first #1587 Mac run:
+//    "use of undeclared identifier").
+//
+float32x4_t pa_neon_probe_vtbl1q(uint8x16_t tab, uint8x16_t idx)
 {
     return vreinterpretq_f32_u8(vtbl1q_u8(idx, tab));
+}
+
+float32x4_t pa_neon_probe_vqtbl1q(uint8x16_t tab, uint8x16_t idx)
+{
+    return vreinterpretq_f32_u8(vqtbl1q_u8(tab, idx));
+}
+
+float32x4_t pa_neon_probe_vqtbl2q(uint8x16x2_t tab, uint8x16_t idx)
+{
+    return vreinterpretq_f32_u8(vqtbl2q_u8(tab, idx));
 }
 
 

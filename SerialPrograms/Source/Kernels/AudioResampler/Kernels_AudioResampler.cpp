@@ -18,6 +18,19 @@ namespace AudioResampler{
 
 
 
+//  The output period of the resampling lattice: how many output samples
+//  until the input phase repeats.
+static size_t output_period(size_t in_sample_rate, size_t out_sample_rate){
+    return out_sample_rate / std::gcd(in_sample_rate, out_sample_rate);
+}
+
+//  The smallest multiple of period that is >= block, so a block starting
+//  anywhere in the extended period wraps it at most once.
+static size_t extended_period(size_t period, size_t block){
+    return period * ((block + period - 1) / period);
+}
+
+
 AudioResampler::~AudioResampler() = default;
 AudioResampler::AudioResampler(
     size_t in_sample_rate,
@@ -31,10 +44,17 @@ AudioResampler::AudioResampler(
     , m_out_rate(out_sample_rate)
     , m_taps(taps)
     , m_block(get_block_kernel(in_sample_rate, out_sample_rate))
+    , m_taps_padded(((m_taps + m_block.tap_block - 1) / m_block.tap_block) * m_block.tap_block)
     , m_period_in(in_sample_rate / std::gcd(in_sample_rate, out_sample_rate))
+    , m_period_prime(
+        extended_period(output_period(in_sample_rate, out_sample_rate), m_block.sample_block)
+    )
+    , m_period_in_prime(
+        m_period_in * (m_period_prime / output_period(in_sample_rate, out_sample_rate))
+    )
     , m_table(
         in_sample_rate, out_sample_rate, taps, beta,
-        out_sample_rate / std::gcd(in_sample_rate, out_sample_rate) + m_block.sample_block,
+        m_period_prime + m_block.sample_block,
         taps + m_block.tap_block - 1
     )
     , m_buffer_stride(std::max(buffer_size, m_block.sample_block))
@@ -97,19 +117,13 @@ void AudioResampler::flush(size_t count){
 size_t AudioResampler::need(size_t wr) const{
     const uint32_t* index = m_table.in_sample_index();
     const size_t block = m_block.sample_block;
-    const size_t tap_block = m_block.tap_block;
-    //  The unrolls' final partial group still reads input samples for the
-    //  zero-padded tap rows, so account for the padded tap count, not just
-    //  m_table.taps().
-    const size_t taps = m_table.taps();
-    const size_t taps_padded = ((taps + tap_block - 1) / tap_block) * tap_block;
-    return index[wr + block - 1] + taps_padded + (block - 1) - index[wr];
+    return index[wr + block - 1] + m_taps_padded + (block - 1) - index[wr];
 }
 
 template <typename InBase>
 size_t AudioResampler::emit_block(
     size_t in_index, InBase in_base,
-    size_t& out, size_t& wr, size_t& cursor, size_t& out_off
+    size_t& out, size_t& wr, size_t& periods, size_t& cursor, size_t& out_off
 ){
     const uint32_t* index = m_table.in_sample_index();
     const size_t block = m_block.sample_block;
@@ -126,7 +140,12 @@ size_t AudioResampler::emit_block(
 
     size_t consumed = index[wr + block] - index[wr];
     out += block;
-    wr = (wr + block) % m_table.period();
+    wr += block;
+    //  block <= m_period_prime, so this wraps at most once.
+    if (wr >= m_period_prime){
+        wr -= m_period_prime;
+        periods += 1;
+    }
     cursor += consumed;
     return consumed;
 }
@@ -137,15 +156,18 @@ void AudioResampler::push_samples(size_t samples, size_t stride, const float* da
     }
 
     const uint32_t* index = m_table.in_sample_index();
-    const size_t period = m_table.period();
+    const size_t period_prime = m_period_prime;
     const size_t block = m_block.sample_block;
     const size_t channels = this->channels();
 
+    //  The per-push division and modulo are amortized over the whole
+    //  chunk; the per-block progress below uses neither.
     size_t out = m_out_count;
-    size_t wr = out % period;
+    size_t wr = out % period_prime;
+    size_t periods = out / period_prime;
 
     //  Absolute input position of the next output's window start.
-    size_t cursor = index[wr] + (out / period) * m_period_in;
+    size_t cursor = index[wr] + periods * m_period_in_prime;
     const size_t pushed_end = m_in_cursor + samples;
 
     //  When downsampling by a lot the cursor jumps past the pushed data.
@@ -184,7 +206,7 @@ void AudioResampler::push_samples(size_t samples, size_t stride, const float* da
             [&](size_t c){
                 return m_carry[c].data();
             },
-            out, wr, cursor, out_off
+            out, wr, periods, cursor, out_off
         );
         if ((ptrdiff_t)consumed < carry){
             for (size_t c = 0; c < channels; c++){
@@ -214,13 +236,13 @@ void AudioResampler::push_samples(size_t samples, size_t stride, const float* da
             //  window-start span can exceed the remaining data (strong
             //  downsampling), so only advance as far as the data allows;
             //  the reconciliation below drops whatever is now in the past.
-            const size_t in_index = S - (out / period) * m_period_in;
+            const size_t in_index = S - periods * m_period_in_prime;
             const size_t consumed = emit_block(
                 in_index,
                 [&](size_t c){
                     return data + c * stride;
                 },
-                out, wr, cursor, out_off
+                out, wr, periods, cursor, out_off
             );
             const size_t advance = std::min(consumed, n);
             data += advance;

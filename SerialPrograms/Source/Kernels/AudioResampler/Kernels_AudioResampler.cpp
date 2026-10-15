@@ -50,8 +50,8 @@ AudioResampler::AudioResampler(
         m_block.sample_block,
         taps + m_block.tap_block - 1
     )
-    , m_period_prime(extended_period(m_table.period(), m_block.sample_block))
-    , m_period_in_prime(m_table.period_in() * (m_period_prime / m_table.period()))
+    , m_period_prime(extended_period(m_table.period_out(), m_block.sample_block))
+    , m_period_in_prime(m_table.period_in() * (m_period_prime / m_table.period_out()))
     , m_buffer_stride(std::max(buffer_size, m_block.sample_block))
     , m_buffer(channels * m_buffer_stride)
     , m_flush_at((buffer_size / m_block.sample_block) * m_block.sample_block)
@@ -76,7 +76,7 @@ AudioResampler::AudioResampler(
     //  includes the kernel's implied read overshoots, so the max over all
     //  positions is an exact worst case and needs no slack.
     size_t max_need = 0;
-    for (size_t wr = 0; wr < m_table.period(); wr++){
+    for (size_t wr = 0; wr < m_table.period_out(); wr++){
         max_need = std::max(max_need, need(wr));
     }
     m_carry_capacity = max_need;

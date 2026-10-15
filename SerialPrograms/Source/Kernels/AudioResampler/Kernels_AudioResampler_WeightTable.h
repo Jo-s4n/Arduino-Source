@@ -33,8 +33,9 @@ public:
     size_t taps() const{
         return m_taps;
     }
-    size_t period() const{
-        return m_period;
+    //  Output samples per period (out_sample_rate / gcd).
+    size_t period_out() const{
+        return m_period_out;
     }
     //  Input samples per output period (in_sample_rate / gcd).
     size_t period_in() const{
@@ -68,7 +69,7 @@ private:
 
 private:
     size_t m_taps;
-    size_t m_period;
+    size_t m_period_out;
     size_t m_period_in;
     size_t m_taps_allocated;
     size_t m_samples_allocated;

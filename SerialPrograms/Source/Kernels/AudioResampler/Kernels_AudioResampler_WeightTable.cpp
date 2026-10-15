@@ -48,7 +48,7 @@ WeightTable::WeightTable(
 //    size_t in_period = in_sample_rate / gcd;
 //    size_t out_period = out_sample_rate / gcd;
     size_t period = out_sample_rate / gcd;
-    m_period = period;
+    m_period_out = period;
     m_period_in = in_sample_rate / gcd;
     m_samples_allocated = std::max(period, min_samples);
     const size_t width = m_samples_allocated;

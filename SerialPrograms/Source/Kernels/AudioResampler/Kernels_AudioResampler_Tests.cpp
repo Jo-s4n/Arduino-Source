@@ -263,7 +263,7 @@ UnitTestResult BlockKernelTest::run(Logger& logger, CancellableScope& scope) con
         m_out_index + m_block + 64,
         m_taps
     );
-    if (m_out_index >= table.period()){
+    if (m_out_index >= table.period_out()){
         return "out_index must wrap to the period.";
     }
 

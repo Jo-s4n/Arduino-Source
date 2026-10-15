@@ -55,17 +55,16 @@ AudioResampler::AudioResampler(
     }
 
 
-    //  Size the carry buffers. The carry never holds more than one block's
-    //  worth of input (see push_samples), so the worst-case block read plus
-    //  a little slack is enough.
+    //  Size the carry buffers. push_samples() never stages more than
+    //  need(wr) input samples for the block at wrapped index wr - both the
+    //  loop gate and the tail save bound against it - and need() already
+    //  includes the kernel's implied read overshoots, so the max over all
+    //  positions is an exact worst case and needs no slack.
     size_t max_need = 0;
     for (size_t wr = 0; wr < m_table.period(); wr++){
-        size_t need_w = need(wr);
-        if (need_w > max_need){
-            max_need = need_w;
-        }
+        max_need = std::max(max_need, need(wr));
     }
-    m_carry_capacity = max_need + 64;
+    m_carry_capacity = max_need;
     m_carry.reserve(channels);
     for (size_t c = 0; c < channels; c++){
         m_carry.emplace_back(m_carry_capacity);
@@ -98,7 +97,13 @@ void AudioResampler::flush(size_t count){
 size_t AudioResampler::need(size_t wr) const{
     const uint32_t* index = m_table.in_sample_index();
     const size_t block = m_block.sample_block;
-    return index[wr + block - 1] + m_table.taps() + (block - 1) - index[wr];
+    const size_t tap_block = m_block.tap_block;
+    //  The unrolls' final partial group still reads input samples for the
+    //  zero-padded tap rows, so account for the padded tap count, not just
+    //  m_table.taps().
+    const size_t taps = m_table.taps();
+    const size_t taps_padded = ((taps + tap_block - 1) / tap_block) * tap_block;
+    return index[wr + block - 1] + taps_padded + (block - 1) - index[wr];
 }
 
 template <typename InBase>

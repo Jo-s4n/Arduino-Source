@@ -346,6 +346,19 @@ void run_block32_down2_ARM64_NEON(
 
 
 
+//
+//  Scratch CI probe (do not merge): does Apple Clang's arm_neon.h have
+//  a 128-bit-table TBL intrinsic? vtbl2q_u8 is confirmed absent (first
+//  #1587 Mac run); if this compiles on Mac, vtbl1q_u8 exists and the
+//  Clang path can use a single 128-bit TBL for the up kernel.
+//
+float32x4_t pa_neon_tbl1q_probe(uint8x16_t tab, uint8x16_t idx)
+{
+    return vreinterpretq_f32_u8(vtbl1q_u8(idx, tab));
+}
+
+
+
 void add_tests_ARM64_NEON(UnitTestDatabase& database){
     database.add<BlockKernelTest>(
         "NEON", run_block8_tap4_ARM64_NEON,

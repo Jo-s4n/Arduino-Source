@@ -80,23 +80,20 @@ private:
 private:
     const size_t m_out_rate;
     const uint32_t m_taps;
-    //  The dispatched block kernel. The weight table is constructed to its
-    //  implied overshoots: min_samples >= m_period_prime + sample_block
-    //  and min_taps >= taps + tap_block - 1.
+    //  The dispatched block kernel.
     const BlockKernel m_block;
-    //  Tap count including the zero-padded rows that the unrolling
-    //  kernels' final partial group still reads input samples for.
-    const size_t m_taps_padded;
-    //  Input samples per output period (in_sample_rate / gcd).
-    const size_t m_period_in;
+    //  The weight table, constructed to the block's implied overshoots:
+    //  min_samples = m_period_prime + sample_block and
+    //  min_taps = taps + tap_block - 1.
+    WeightTable m_table;
     //  Extended output period: the smallest multiple of the table's period
     //  that is >= sample_block, so a block wraps it at most once and
     //  advancing the wrapped index is a compare-and-subtract, not a
     //  modulo.
     const size_t m_period_prime;
-    //  Input samples per extended period.
+    //  Input samples per extended period (m_table.period_in() times the
+    //  period extension).
     const size_t m_period_in_prime;
-    WeightTable m_table;
     //  Floats per channel in m_buffer. At least the requested buffer size,
     //  rounded up so a block never straddles the channel boundary.
     const size_t m_buffer_stride;

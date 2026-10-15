@@ -44,19 +44,14 @@ AudioResampler::AudioResampler(
     , m_out_rate(out_sample_rate)
     , m_taps(taps)
     , m_block(get_block_kernel(in_sample_rate, out_sample_rate))
-    , m_taps_padded(((m_taps + m_block.tap_block - 1) / m_block.tap_block) * m_block.tap_block)
-    , m_period_in(in_sample_rate / std::gcd(in_sample_rate, out_sample_rate))
-    , m_period_prime(
-        extended_period(output_period(in_sample_rate, out_sample_rate), m_block.sample_block)
-    )
-    , m_period_in_prime(
-        m_period_in * (m_period_prime / output_period(in_sample_rate, out_sample_rate))
-    )
     , m_table(
         in_sample_rate, out_sample_rate, taps, beta,
-        m_period_prime + m_block.sample_block,
+        extended_period(output_period(in_sample_rate, out_sample_rate), m_block.sample_block) +
+        m_block.sample_block,
         taps + m_block.tap_block - 1
     )
+    , m_period_prime(extended_period(m_table.period(), m_block.sample_block))
+    , m_period_in_prime(m_table.period_in() * (m_period_prime / m_table.period()))
     , m_buffer_stride(std::max(buffer_size, m_block.sample_block))
     , m_buffer(channels * m_buffer_stride)
     , m_flush_at((buffer_size / m_block.sample_block) * m_block.sample_block)
@@ -117,7 +112,11 @@ void AudioResampler::flush(size_t count){
 size_t AudioResampler::need(size_t wr) const{
     const uint32_t* index = m_table.in_sample_index();
     const size_t block = m_block.sample_block;
-    return index[wr + block - 1] + m_taps_padded + (block - 1) - index[wr];
+    //  taps_allocated() bounds the kernel's input reads: the unrolls'
+    //  final partial group reads at most
+    //  ceil(taps / tap_block) * tap_block taps, and the table's padding to
+    //  taps + tap_block - 1 rows is at least that.
+    return index[wr + block - 1] + m_table.taps_allocated() + (block - 1) - index[wr];
 }
 
 template <typename InBase>
